@@ -1,0 +1,66 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  password      String
+  role          Role      @relation(fields: [roleId], references: [id])
+  roleId        String
+  brandAccess   Brand[]   @relation("UserBrands")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Role {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  permissions String[]
+  users       User[]
+}
+
+model Brand {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  settings    Json
+  users       User[]    @relation("UserBrands")
+  content     Content[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Content {
+  id          String    @id @default(cuid())
+  title       String
+  type        String
+  status      String
+  data        Json
+  brand       Brand     @relation(fields: [brandId], references: [id])
+  brandId     String
+  versions    Version[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Version {
+  id          String    @id @default(cuid())
+  content     Content   @relation(fields: [contentId], references: [id])
+  contentId   String
+  data        Json
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
