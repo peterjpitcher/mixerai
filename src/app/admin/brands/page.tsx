@@ -14,15 +14,32 @@ import BrandWizard from '@/components/BrandWizard'
 interface Brand {
   id: string
   name: string
-  slug: string
   logo_url: string | null
+  website_url: string
+  language: string
+  country: string
   settings: {
     brandIdentity: string
     toneOfVoice: string
     guardrails: string[]
+    keywords: string[]
     allowedContentTypes: string[]
+    workflowStages: string[]
+    customAgencies: Array<{
+      id: string
+      name: string
+      isCustom: boolean
+    }>
+    styleGuide: {
+      communicationStyle: string
+      languagePreferences: string
+      formalityLevel: string
+      writingStyle: string
+    }
   }
-  created_at: string
+  created_at: string | null
+  updated_at: string | null
+  user_id: string | null
 }
 
 export default function BrandsPage() {
@@ -50,7 +67,29 @@ export default function BrandsPage() {
 
       if (error) throw error
 
-      setBrands(data || [])
+      const defaultSettings = {
+        brandIdentity: "",
+        toneOfVoice: "",
+        guardrails: [],
+        keywords: [],
+        allowedContentTypes: [],
+        workflowStages: ["draft", "review", "approved", "published"],
+        customAgencies: [],
+        styleGuide: {
+          communicationStyle: "",
+          languagePreferences: "",
+          formalityLevel: "",
+          writingStyle: ""
+        }
+      }
+
+      setBrands((data || []).map(brand => ({
+        ...brand,
+        settings: {
+          ...defaultSettings,
+          ...(brand.settings as any || {})
+        }
+      })))
     } catch (err) {
       console.error('Error loading brands:', err)
       setError(err instanceof Error ? err.message : 'Failed to load brands')

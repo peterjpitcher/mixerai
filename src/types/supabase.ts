@@ -6,199 +6,314 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export type UserRole = 'admin' | 'manager' | 'user'
-
-export interface Database {
+export type Database = {
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          operationName?: string
+          query?: string
+          variables?: Json
+          extensions?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
+      brands: {
+        Row: {
+          country: string
+          created_at: string | null
+          id: string
+          language: string
+          logo_url: string | null
+          name: string
+          settings: Json
+          updated_at: string | null
+          user_id: string | null
+          website_url: string
+        }
+        Insert: {
+          country: string
+          created_at?: string | null
+          id?: string
+          language: string
+          logo_url?: string | null
+          name: string
+          settings?: Json
+          updated_at?: string | null
+          user_id?: string | null
+          website_url: string
+        }
+        Update: {
+          country?: string
+          created_at?: string | null
+          id?: string
+          language?: string
+          logo_url?: string | null
+          name?: string
+          settings?: Json
+          updated_at?: string | null
+          user_id?: string | null
+          website_url?: string
+        }
+        Relationships: []
+      }
+      brand_roles: {
+        Row: {
+          id: string
+          brand_id: string
+          role_name: string
+          email: string | null
+          is_compulsory: boolean
+          order: number
+          display_name: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          brand_id: string
+          role_name: string
+          email?: string | null
+          is_compulsory?: boolean
+          order?: number
+          display_name?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          brand_id?: string
+          role_name?: string
+          email?: string | null
+          is_compulsory?: boolean
+          order?: number
+          display_name?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_roles_brand_id_fkey"
+            columns: ["brand_id"]
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brand_roles_role_name_fkey"
+            columns: ["role_name"]
+            referencedRelation: "roles"
+            referencedColumns: ["name"]
+          }
+        ]
+      }
       roles: {
         Row: {
           id: string
-          name: UserRole
-          description: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          name: UserRole
-          description?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          name?: UserRole
-          description?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-      }
-      permissions: {
-        Row: {
-          id: string
           name: string
-          description: string | null
-          created_at: string
-          updated_at: string
+          created_at: string | null
+          updated_at: string | null
         }
         Insert: {
           id?: string
           name: string
-          description?: string | null
-          created_at?: string
-          updated_at?: string
+          created_at?: string | null
+          updated_at?: string | null
         }
         Update: {
           id?: string
           name?: string
-          description?: string | null
-          created_at?: string
-          updated_at?: string
+          created_at?: string | null
+          updated_at?: string | null
         }
+        Relationships: []
       }
-      role_permissions: {
-        Row: {
-          role_id: string
-          permission_id: string
-          created_at: string
-        }
-        Insert: {
-          role_id: string
-          permission_id: string
-          created_at?: string
-        }
-        Update: {
-          role_id?: string
-          permission_id?: string
-          created_at?: string
-        }
-      }
-      user_roles: {
-        Row: {
-          user_id: string
-          role_id: string
-          created_at: string
-        }
-        Insert: {
-          user_id: string
-          role_id: string
-          created_at?: string
-        }
-        Update: {
-          user_id?: string
-          role_id?: string
-          created_at?: string
-        }
-      }
-      brands: {
+      invitations: {
         Row: {
           id: string
-          name: string
-          logo_url?: string | null
-          website_url?: string | null
-          language?: string | null
-          country?: string | null
-          settings: {
-            brandIdentity: string
-            toneOfVoice: string
-            guardrails: string[]
-            keywords: string[]
-            styleGuide: {
-              communicationStyle: string
-              languagePreferences: string
-              formalityLevel: string
-              writingStyle: string
-            }
-            roles: string[]
-            allowedContentTypes: string[]
-            workflowStages: string[]
-          }
+          email: string
+          status: string
           created_at: string
-          updated_at: string
+          accepted_at: string | null
+          role_name: string
+          brand_names: string[]
+          invited_by_email: string
         }
         Insert: {
           id?: string
-          name: string
-          logo_url?: string | null
-          website_url?: string | null
-          language?: string | null
-          country?: string | null
-          settings?: {
-            brandIdentity?: string
-            toneOfVoice?: string
-            guardrails?: string[]
-            keywords?: string[]
-            styleGuide?: {
-              communicationStyle?: string
-              languagePreferences?: string
-              formalityLevel?: string
-              writingStyle?: string
-            }
-            roles?: string[]
-            allowedContentTypes?: string[]
-            workflowStages?: string[]
-          }
+          email: string
+          status?: string
           created_at?: string
-          updated_at?: string
+          accepted_at?: string | null
+          role_name: string
+          brand_names: string[]
+          invited_by_email: string
         }
         Update: {
           id?: string
-          name?: string
-          logo_url?: string | null
-          website_url?: string | null
-          language?: string | null
-          country?: string | null
-          settings?: {
-            brandIdentity?: string
-            toneOfVoice?: string
-            guardrails?: string[]
-            keywords?: string[]
-            styleGuide?: {
-              communicationStyle?: string
-              languagePreferences?: string
-              formalityLevel?: string
-              writingStyle?: string
-            }
-            roles?: string[]
-            allowedContentTypes?: string[]
-            workflowStages?: string[]
-          }
+          email?: string
+          status?: string
           created_at?: string
-          updated_at?: string
+          accepted_at?: string | null
+          role_name?: string
+          brand_names?: string[]
+          invited_by_email?: string
         }
-      }
-      user_brand_access: {
-        Row: {
-          user_id: string
-          brand_id: string
-          created_at: string
-        }
-        Insert: {
-          user_id: string
-          brand_id: string
-          created_at?: string
-        }
-        Update: {
-          user_id?: string
-          brand_id?: string
-          created_at?: string
-        }
+        Relationships: []
       }
     }
     Views: {
-      user_permissions_view: {
+      invitation_details: {
         Row: {
-          user_id: string
-          role_name: UserRole | null
-          permissions: string[] | null
-          accessible_brand_names: string[] | null
+          id: string
+          email: string
+          status: string
+          created_at: string
+          accepted_at: string | null
+          role_name: string
+          brand_names: string[]
+          invited_by_email: string
         }
       }
     }
-    Functions: {}
+    Functions: {
+      [_ in never]: never
+    }
     Enums: {
-      user_role: UserRole
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
     }
   }
-} 
+}
+
+type DefaultSchema = Database[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof Database },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
+  ? (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof Database },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
+  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof Database },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
+  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof Database },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends { schema: keyof Database }
+  ? Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof Database },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
+  public: {
+    Enums: {},
+  },
+} as const
+

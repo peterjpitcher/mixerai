@@ -20,6 +20,31 @@ const nextConfig = {
       }
     ],
   },
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '2mb'
+    },
+  },
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      // Don't resolve 'fs' module on the client to prevent this error on build --> Error: Can't resolve 'fs'
+      config.resolve.fallback = {
+        fs: false,
+        net: false,
+        tls: false,
+        fetch: false,
+        cheerio: false,
+        'node-fetch': false,
+      }
+    }
+
+    // Ensure these modules are treated as external on the server side
+    if (isServer) {
+      config.externals = [...(config.externals || []), 'cheerio', 'node-fetch']
+    }
+
+    return config
+  },
 }
 
 module.exports = nextConfig 

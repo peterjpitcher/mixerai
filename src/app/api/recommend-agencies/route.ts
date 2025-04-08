@@ -5,119 +5,112 @@ if (!process.env.OPENAI_API_KEY) {
   throw new Error('Missing OPENAI_API_KEY environment variable')
 }
 
-if (!process.env.OPENAI_BASE_URL) {
-  throw new Error('Missing OPENAI_BASE_URL environment variable')
+if (!process.env.AZURE_OPENAI_ENDPOINT) {
+  throw new Error('Missing AZURE_OPENAI_ENDPOINT environment variable')
 }
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  baseURL: process.env.OPENAI_BASE_URL,
+  baseURL: process.env.AZURE_OPENAI_ENDPOINT,
   defaultQuery: { 'api-version': '2024-02-15-preview' },
   defaultHeaders: { 'api-key': process.env.OPENAI_API_KEY }
 })
 
-export async function POST(req: Request) {
-  try {
-    const { brandName, brandIdentity, toneOfVoice, language, country } = await req.json()
+interface Agency {
+  name: string
+  priority?: number
+}
 
-    if (!brandIdentity || !toneOfVoice) {
+export async function POST(request: Request) {
+  try {
+    const { brandName, brandIdentity, toneOfVoice, language, country } = await request.json()
+
+    if (!brandIdentity || !toneOfVoice || !language || !country) {
       return NextResponse.json(
-        { error: 'Brand identity and tone of voice are required' },
+        { message: 'Missing required fields' },
         { status: 400 }
       )
     }
 
     // Generate agency recommendations
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4',
+    const recommendationCompletion = await openai.chat.completions.create({
+      model: "gpt-4o",
       messages: [
         {
-          role: 'system',
-          content: `You are an expert in regulatory compliance who helps companies identify relevant regulatory bodies and agencies based on their brand identity and industry. You analyze a brand's identity and tone of voice to recommend appropriate regulatory bodies.
+          role: "system",
+          content: `You are an expert in regulatory compliance and content moderation. Based on the brand information provided, recommend relevant regulatory bodies and content moderation agencies that this brand should consider for their content validation process.
 
-Your recommendations should be comprehensive and include:
-1. Food safety and quality regulators (e.g. FDA, AAFCO for pet food)
-2. Advertising and marketing regulators (e.g. FTC, ASA)
-3. Consumer protection agencies
-4. Industry-specific bodies (e.g. Pet Food Institute)
-5. Data protection and privacy regulators
-6. Environmental and sustainability bodies
-7. Trade and commerce regulators
-8. Quality assurance organizations
-9. Health and safety regulators
-10. Professional standards bodies
-
-For each category that applies to the brand, provide at least one relevant agency. Consider:
-- The brand's specific industry and products
-- Their target market and geographical presence
-- Marketing and advertising practices
-- Digital presence and data handling
-- Supply chain and manufacturing
-- Quality and safety standards
-- Environmental impact
-- Consumer protection requirements
-
-Format your response as a JSON array of objects with 'id' and 'name' properties. The id should be a kebab-case version of the name.`
-        },
-        {
-          role: 'user',
-          content: `Please recommend relevant regulatory bodies and agencies for this brand:
-
-Brand Name: ${brandName || 'Unknown'}
-Country: ${country || 'Unknown'}
-Language: ${language || 'Unknown'}
-
-Brand Identity:
-${brandIdentity}
-
-Tone of Voice:
-${toneOfVoice}
-
-Example response format:
+Your response should be in JSON format with the following structure:
 {
   "agencies": [
     {
-      "id": "fda-cvm",
-      "name": "FDA Center for Veterinary Medicine"
-    },
-    {
-      "id": "aafco",
-      "name": "Association of American Feed Control Officials"
+      "id": "unique-id",
+      "name": "Agency Name",
+      "priority": 1,
+      "description": "Brief explanation of why this agency is relevant"
     }
   ]
-}`
+}
+
+Priority Levels:
+1 - Critical/Mandatory: Regulatory bodies that are legally required or essential for the brand's operation
+2 - Important: Highly recommended agencies based on industry standards and best practices
+3 - Optional: Additional agencies that could provide value but aren't essential
+
+Guidelines:
+1. Sort agencies by priority (1 to 3)
+2. Include 2-3 agencies for each priority level
+3. Focus on the most relevant agencies for the brand's specific needs
+4. Consider:
+   - The brand's industry and content type
+   - Regional regulations in ${country}
+   - Language-specific requirements for ${language}
+   - Content moderation needs based on the tone of voice
+   - Industry-specific regulatory bodies
+
+Brand Information:
+Name: ${brandName}
+Brand Identity: ${brandIdentity}
+Tone of Voice: ${toneOfVoice}
+Country: ${country}
+Language: ${language}`
         }
       ],
-      response_format: { type: 'json_object' },
-      temperature: 0.7
+      temperature: 0.7,
+      max_tokens: 1500,
+      response_format: { type: "json_object" }
     })
 
-    const result = JSON.parse(response.choices[0].message.content || '{}')
+    const response = recommendationCompletion.choices[0].message.content
 
-    return NextResponse.json({
-      agencies: result.agencies || []
-    })
-
-  } catch (error) {
-    console.error('Error recommending agencies:', error)
-
-    if (error instanceof Error) {
-      if (error.message.includes('401')) {
-        return NextResponse.json(
-          { error: 'Authentication error. Please check your OpenAI API key.' },
-          { status: 401 }
-        )
-      }
-      if (error.message.includes('429')) {
-        return NextResponse.json(
-          { error: 'Rate limit exceeded. Please try again later.' },
-          { status: 429 }
-        )
-      }
+    if (!response) {
+      return NextResponse.json(
+        { message: 'Failed to generate agency recommendations' },
+        { status: 500 }
+      )
     }
 
+    try {
+      const parsedResponse = JSON.parse(response)
+      
+      // Sort agencies by priority if they exist
+      if (parsedResponse.agencies && Array.isArray(parsedResponse.agencies)) {
+        parsedResponse.agencies.sort((a: Agency, b: Agency) => (a.priority || 3) - (b.priority || 3))
+      }
+      
+      return NextResponse.json(parsedResponse)
+    } catch (parseError) {
+      console.error('Error parsing OpenAI response:', parseError)
+      return NextResponse.json(
+        { message: 'Failed to parse agency recommendations' },
+        { status: 500 }
+      )
+    }
+  } catch (error: unknown) {
+    console.error('Error in recommend-agencies:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
     return NextResponse.json(
-      { error: 'Failed to recommend agencies' },
+      { message: `Failed to generate agency recommendations: ${errorMessage}` },
       { status: 500 }
     )
   }

@@ -55,43 +55,73 @@ interface BrandRole {
   id: string
   brand_id: string
   role_id: string
-  email?: string
+  email: string | null
   is_compulsory: boolean
   order: number
   name: string
 }
 
 interface BrandSettings {
-  brandIdentity?: string
-  toneOfVoice?: string
-  guardrails?: string[]
-  keywords?: string[]
-  allowedContentTypes?: string[]
+  brandIdentity: string
+  toneOfVoice: string
+  guardrails: string[]
+  keywords: string[]
+  allowedContentTypes: string[]
+  workflowStages: string[]
+  customAgencies: Array<{
+    id: string
+    name: string
+    isCustom: boolean
+  }>
+  styleGuide: {
+    communicationStyle: string
+    languagePreferences: string
+    formalityLevel: string
+    writingStyle: string
+  }
+  [key: string]: any
 }
 
 interface Brand {
   id: string
   name: string
-  logo_url?: string | null
-  website_url?: string | null
-  language?: string | null
-  country?: string | null
-  settings?: BrandSettings
-  roles?: BrandRole[]
-  created_at?: string
+  logo_url: string | null
+  website_url: string
+  language: string
+  country: string
+  settings: BrandSettings
+  roles: BrandRole[]
+  created_at: string | null
+  updated_at: string | null
+  user_id: string | null
 }
 
 const defaultBrand: Brand = {
   id: "",
   name: "",
+  logo_url: null,
+  website_url: "",
+  language: "",
+  country: "",
   settings: {
     brandIdentity: "",
     toneOfVoice: "",
     guardrails: [],
     keywords: [],
-    allowedContentTypes: []
+    allowedContentTypes: [],
+    workflowStages: ["draft", "review", "approved", "published"],
+    customAgencies: [],
+    styleGuide: {
+      communicationStyle: "",
+      languagePreferences: "",
+      formalityLevel: "",
+      writingStyle: ""
+    }
   },
-  roles: []
+  roles: [],
+  created_at: null,
+  updated_at: null,
+  user_id: null
 }
 
 const RoleIcon = ({ role }: { role: BrandRole }) => {
@@ -102,8 +132,13 @@ const RoleIcon = ({ role }: { role: BrandRole }) => {
   )
 }
 
-export default function BrandEditPage() {
-  const params = useParams()
+interface PageProps {
+  params: {
+    id: string  // Explicitly type as string
+  }
+}
+
+export default function BrandPage({ params }: PageProps) {
   const router = useRouter()
   const { supabase } = useSupabase()
   const { toast } = useToast()
@@ -129,7 +164,7 @@ export default function BrandEditPage() {
         supabase
           .from("brands")
           .select("*")
-          .eq("id", params.id)
+          .eq("id", params.id as string)
           .single(),
         supabase
           .from("brand_roles")
@@ -146,6 +181,7 @@ export default function BrandEditPage() {
       if (availableRolesResult.error) throw availableRolesResult.error
 
       if (brandResult.data) {
+        const settings = brandResult.data.settings as BrandSettings || defaultBrand.settings
         setBrand({
           ...defaultBrand,
           ...brandResult.data,
@@ -160,7 +196,7 @@ export default function BrandEditPage() {
           })),
           settings: {
             ...defaultBrand.settings,
-            ...brandResult.data.settings
+            ...settings
           }
         })
       }
@@ -187,10 +223,10 @@ export default function BrandEditPage() {
         .from("brands")
         .update({
           name: brand.name,
-          logo_url: brand.logo_url,
-          website_url: brand.website_url,
-          language: brand.language,
-          country: brand.country,
+          logo_url: brand.logo_url ?? null,
+          website_url: brand.website_url ?? null,
+          language: brand.language ?? null,
+          country: brand.country ?? null,
           settings: brand.settings || defaultBrand.settings
         })
         .eq("id", brand.id)
@@ -199,16 +235,12 @@ export default function BrandEditPage() {
 
       toast({
         title: "Success",
-        description: "Brand settings saved successfully."
+        description: "Brand settings saved successfully.",
       })
       router.push("/admin/brands")
     } catch (err) {
       console.error("Error saving brand:", err)
-      toast({
-        title: "Error",
-        description: "Failed to save brand settings.",
-        variant: "destructive"
-      })
+      setError(err instanceof Error ? err.message : "Failed to save brand")
     } finally {
       setSaving(false)
     }

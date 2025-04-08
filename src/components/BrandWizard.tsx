@@ -33,6 +33,17 @@ interface CustomAgency {
   isCustom: true
 }
 
+interface AgencyRecommendation {
+  id: string;
+  name: string;
+  priority: 1 | 2 | 3;
+  description: string;
+}
+
+interface AgencyResponse {
+  agencies: AgencyRecommendation[];
+}
+
 const teamRoles: TeamRole[] = [
   { id: 'reviewer', name: 'Content Reviewer' },
   { id: 'editor', name: 'Content Editor' },
@@ -56,8 +67,8 @@ const teamMemberSchema = z.object({
 
 const brandIdentitySchema = z.object({
   referenceUrls: z.array(z.string().url('Please enter a valid URL')).min(1, 'Please add at least one reference URL'),
-  brandIdentity: z.string().optional(),
-  toneOfVoice: z.string().optional(),
+  brandIdentity: z.string().min(1, 'Brand identity is required'),
+  toneOfVoice: z.string().min(1, 'Tone of voice is required'),
   guardrails: z.array(z.string()).optional()
 })
 
@@ -99,7 +110,7 @@ export default function BrandWizard({ onComplete }: BrandWizardProps) {
   const [isGenerating, setIsGenerating] = useState(false)
   const [urlInputs, setUrlInputs] = useState<UrlInput[]>([{ url: '', isValid: false }])
   const [newAgencyName, setNewAgencyName] = useState('')
-  const [recommendedAgencies, setRecommendedAgencies] = useState<Array<{ id: string; name: string }>>([])
+  const [recommendedAgencies, setRecommendedAgencies] = useState<AgencyRecommendation[]>([])
 
   const {
     register: registerBasicInfo,
@@ -119,6 +130,9 @@ export default function BrandWizard({ onComplete }: BrandWizardProps) {
     resolver: zodResolver(brandIdentitySchema),
     defaultValues: {
       referenceUrls: [''],
+      brandIdentity: '',
+      toneOfVoice: '',
+      guardrails: []
     },
   })
 
@@ -153,6 +167,12 @@ export default function BrandWizard({ onComplete }: BrandWizardProps) {
     const isValid = isValidUrl(value)
     newInputs[index] = { url: value, isValid }
     setUrlInputs(newInputs)
+    
+    // Update the form's referenceUrls field
+    const validUrls = newInputs
+      .filter(input => input.isValid)
+      .map(input => input.url)
+    setBrandIdentityValue('referenceUrls', validUrls)
   }
 
   const addUrlInput = () => {
@@ -290,10 +310,33 @@ export default function BrandWizard({ onComplete }: BrandWizardProps) {
     setNewAgencyName('')
   }
 
-  const onBrandIdentitySubmit = async (data: BrandIdentityData) => {
-    setBrandIdentity(data)
-    
+  const onBrandIdentitySubmit = async (formData: BrandIdentityData) => {
     try {
+      setLoading(true)
+      setError(null)
+
+      // Get valid URLs
+      const validUrls = urlInputs
+        .filter(input => input.isValid)
+        .map(input => input.url)
+
+      if (validUrls.length === 0) {
+        setError('Please add at least one valid reference URL')
+        setLoading(false)
+        return
+      }
+
+      // Update the brandIdentity state with the form data
+      const updatedData: BrandIdentityData = {
+        ...formData,
+        referenceUrls: validUrls,
+        brandIdentity: formData.brandIdentity || brandIdentity.brandIdentity,
+        toneOfVoice: formData.toneOfVoice || brandIdentity.toneOfVoice,
+        guardrails: brandIdentity.guardrails || []
+      }
+      
+      setBrandIdentity(updatedData)
+      
       // Generate recommended agencies based on brand identity
       const response = await fetch('/api/recommend-agencies', {
         method: 'POST',
@@ -302,35 +345,64 @@ export default function BrandWizard({ onComplete }: BrandWizardProps) {
         },
         body: JSON.stringify({
           brandName: basicInfo?.name,
-          brandIdentity: data.brandIdentity,
-          toneOfVoice: data.toneOfVoice,
+          brandIdentity: updatedData.brandIdentity,
+          toneOfVoice: updatedData.toneOfVoice,
           language: basicInfo?.language,
           country: basicInfo?.country
         }),
       })
 
       if (!response.ok) {
-        throw new Error('Failed to get agency recommendations')
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'Failed to get agency recommendations')
       }
 
-      const { agencies } = await response.json()
-      setRecommendedAgencies(agencies || [])
+      const responseData = await response.json() as AgencyResponse
+      if (responseData && Array.isArray(responseData.agencies)) {
+        setRecommendedAgencies(responseData.agencies)
+        handleNext()
+      } else {
+        throw new Error('Invalid agency recommendations format')
+      }
     } catch (err) {
       console.error('Error getting agency recommendations:', err)
       setError(err instanceof Error ? err.message : 'Failed to get agency recommendations')
+    } finally {
+      setLoading(false)
     }
-
-    handleNext()
   }
 
   const onRegulatorySubmit = async (data: RegulatoryData) => {
     try {
+      console.log('Starting brand creation with data:', {
+        basicInfo,
+        brandIdentity,
+        regulatory: data
+      });
+      
       setLoading(true)
       setError(null)
+
+      // Get the current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      
+      if (userError) {
+        throw new Error('Failed to get current user')
+      }
+
+      if (!user) {
+        throw new Error('No authenticated user found')
+      }
+
+      // Validate required fields
+      if (!basicInfo?.name || !basicInfo?.websiteUrl || !basicInfo?.language || !basicInfo?.country) {
+        throw new Error('Missing required basic information')
+      }
 
       let logoUrl = null
       if (basicInfo?.logo) {
         try {
+          console.log('Uploading logo...');
           // Create the bucket if it doesn't exist
           const { data: bucketData, error: bucketError } = await supabase.storage
             .createBucket('brand-logos', {
@@ -339,8 +411,11 @@ export default function BrandWizard({ onComplete }: BrandWizardProps) {
               fileSizeLimit: 2097152 // 2MB
             })
 
-          if (bucketError && !bucketError.message.includes('already exists')) {
-            throw bucketError
+          if (bucketError) {
+            console.error('Bucket creation error:', bucketError);
+            if (!bucketError.message.includes('already exists')) {
+              throw bucketError
+            }
           }
 
           // Upload the logo with public access
@@ -353,44 +428,71 @@ export default function BrandWizard({ onComplete }: BrandWizardProps) {
               contentType: basicInfo.logo.type
             })
 
-          if (uploadError) throw uploadError
+          if (uploadError) {
+            console.error('Logo upload error:', uploadError);
+            throw uploadError
+          }
           
           const { data: { publicUrl } } = supabase.storage
             .from('brand-logos')
             .getPublicUrl(fileName)
             
           logoUrl = publicUrl
+          console.log('Logo uploaded successfully:', logoUrl);
         } catch (uploadError) {
           console.error('Logo upload error:', uploadError)
-          // Continue without the logo if upload fails
           setError('Failed to upload logo, but continuing with brand creation')
         }
       }
 
-      // Create the brand
+      console.log('Creating brand record...');
+      
+      // Create the brand with properly typed data
+      const brandData = {
+        name: basicInfo.name,
+        website_url: basicInfo.websiteUrl,
+        language: basicInfo.language,
+        country: basicInfo.country,
+        logo_url: logoUrl,
+        user_id: user.id,
+        settings: {
+          referenceUrls: brandIdentity.referenceUrls || [],
+          agencyBodies: data.selectedAgencies || [],
+          brandIdentity: brandIdentity.brandIdentity || '',
+          toneOfVoice: brandIdentity.toneOfVoice || '',
+          guardrails: brandIdentity.guardrails || [],
+          workflowStages: ['draft', 'review', 'approved', 'published'],
+          customAgencies: data.customAgencies || [],
+          keywords: [],
+          styleGuide: {
+            communicationStyle: '',
+            languagePreferences: '',
+            formalityLevel: '',
+            writingStyle: ''
+          },
+          roles: [],
+          allowedContentTypes: []
+        }
+      };
+
+      console.log('Brand data to insert:', brandData);
+
       const { data: brand, error: brandError } = await supabase
         .from('brands')
-        .insert([{
-          name: basicInfo?.name,
-          website_url: basicInfo?.websiteUrl,
-          language: basicInfo?.language,
-          country: basicInfo?.country,
-          logo_url: logoUrl,
-          settings: {
-            referenceUrls: brandIdentity.referenceUrls,
-            agencyBodies: data.selectedAgencies,
-            brandIdentity: brandIdentity.brandIdentity,
-            toneOfVoice: brandIdentity.toneOfVoice,
-            guardrails: brandIdentity.guardrails,
-            workflowStages: ['draft', 'review', 'approved', 'published'],
-            customAgencies: data.customAgencies
-          },
-        }])
+        .insert(brandData)
         .select()
         .single()
 
-      if (brandError) throw brandError
+      if (brandError) {
+        console.error('Brand creation error:', brandError)
+        throw new Error(brandError.message || 'Failed to create brand')
+      }
 
+      if (!brand) {
+        throw new Error('No brand data returned after creation')
+      }
+
+      console.log('Brand created successfully:', brand);
       onComplete?.()
     } catch (err) {
       console.error('Error creating brand:', err)
@@ -549,6 +651,16 @@ export default function BrandWizard({ onComplete }: BrandWizardProps) {
                 We&apos;ll analyze these to help create your brand guidelines.
               </p>
 
+              {/* Hidden input to register referenceUrls with the form */}
+              <input 
+                type="hidden" 
+                {...registerBrandIdentity('referenceUrls')}
+                value={urlInputs.filter(input => input.isValid).map(input => input.url)}
+              />
+              {brandIdentityErrors.referenceUrls && (
+                <p className="text-sm text-red-500 mt-1">{brandIdentityErrors.referenceUrls.message}</p>
+              )}
+
               {urlInputs.map((input, index) => (
                 <div key={index} className="flex gap-2">
                   <Input
@@ -605,22 +717,38 @@ export default function BrandWizard({ onComplete }: BrandWizardProps) {
                   <Label className="text-gray-900">Brand Identity</Label>
                   <Textarea
                     className="font-mono text-sm h-[200px]"
-                    placeholder={isGenerating ? "Generating brand identity..." : "Click 'Generate' to create your brand identity"}
+                    placeholder={isGenerating ? "Generating brand identity..." : "Enter your brand identity or click 'Generate'"}
                     value={brandIdentity.brandIdentity || ''}
-                    readOnly
+                    {...registerBrandIdentity('brandIdentity')}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setBrandIdentity(prev => ({ ...prev, brandIdentity: value }))
+                      setBrandIdentityValue('brandIdentity', value)
+                    }}
                     rows={8}
                   />
+                  {brandIdentityErrors.brandIdentity && (
+                    <p className="text-sm text-red-500 mt-1">{brandIdentityErrors.brandIdentity.message}</p>
+                  )}
                 </div>
 
                 <div>
                   <Label className="text-gray-900">Tone of Voice</Label>
                   <Textarea
                     className="font-mono text-sm h-[200px]"
-                    placeholder={isGenerating ? "Generating tone of voice..." : "Click 'Generate' to create your tone of voice"}
+                    placeholder={isGenerating ? "Generating tone of voice..." : "Enter your tone of voice or click 'Generate'"}
                     value={brandIdentity.toneOfVoice || ''}
-                    readOnly
+                    {...registerBrandIdentity('toneOfVoice')}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setBrandIdentity(prev => ({ ...prev, toneOfVoice: value }))
+                      setBrandIdentityValue('toneOfVoice', value)
+                    }}
                     rows={8}
                   />
+                  {brandIdentityErrors.toneOfVoice && (
+                    <p className="text-sm text-red-500 mt-1">{brandIdentityErrors.toneOfVoice.message}</p>
+                  )}
                 </div>
 
                 <div>
@@ -709,11 +837,20 @@ export default function BrandWizard({ onComplete }: BrandWizardProps) {
                 Back
               </Button>
               <Button 
-                type="submit" 
-                disabled={!brandIdentity.brandIdentity || !brandIdentity.toneOfVoice}
+                type="submit"
+                disabled={!brandIdentity.brandIdentity || !brandIdentity.toneOfVoice || !urlInputs.some(input => input.isValid)}
               >
-                Next
-                <ArrowRight className="ml-2 h-4 w-4" />
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  <>
+                    Next
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </>
+                )}
               </Button>
             </div>
           </form>
@@ -729,110 +866,144 @@ export default function BrandWizard({ onComplete }: BrandWizardProps) {
                 These recommendations are based on your brand&apos;s identity and industry.
               </p>
 
-              <div className="space-y-4">
-                {recommendedAgencies.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <Label>Recommended Agencies</Label>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const allAgencyIds = recommendedAgencies.map(agency => agency.id)
-                          setRegulatory({
-                            ...regulatory,
-                            selectedAgencies: allAgencyIds,
-                          })
-                          setRegulatoryValue('selectedAgencies', allAgencyIds)
-                        }}
-                      >
-                        Select All
-                      </Button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      {recommendedAgencies.map(agency => (
-                        <label key={agency.id} className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            value={agency.id}
-                            checked={regulatory.selectedAgencies.includes(agency.id)}
-                            onChange={(e) => {
-                              const newAgencies = e.target.checked
-                                ? [...regulatory.selectedAgencies, agency.id]
-                                : regulatory.selectedAgencies.filter(id => id !== agency.id)
+              {recommendedAgencies.length > 0 && (
+                <div className="space-y-4">
+                  {[1, 2, 3].map((priority) => {
+                    const priorityAgencies = recommendedAgencies.filter(agency => agency.priority === priority)
+                    if (priorityAgencies.length === 0) return null
+
+                    return (
+                      <div key={priority} className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <Label className="font-medium">
+                            {priority === 1 ? 'Critical/Mandatory' :
+                             priority === 2 ? 'Important' :
+                             'Optional'} Agencies
+                          </Label>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const agencyIds = priorityAgencies.map(agency => agency.id)
+                              const newSelectedAgencies = new Set([...regulatory.selectedAgencies, ...agencyIds])
+                              const updatedAgencies = Array.from(newSelectedAgencies)
                               setRegulatory({
                                 ...regulatory,
-                                selectedAgencies: newAgencies,
+                                selectedAgencies: updatedAgencies,
                               })
-                              setRegulatoryValue('selectedAgencies', newAgencies)
+                              setRegulatoryValue('selectedAgencies', updatedAgencies)
                             }}
-                            className="rounded border-gray-300"
-                          />
-                          <span>{agency.name}</span>
-                        </label>
-                      ))}
-                    </div>
+                          >
+                            Select All
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3">
+                          {priorityAgencies.map(agency => (
+                            <div key={agency.id} className="flex items-start space-x-2 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                              <input
+                                type="checkbox"
+                                value={agency.id}
+                                checked={regulatory.selectedAgencies.includes(agency.id)}
+                                onChange={(e) => {
+                                  const newAgencies = e.target.checked
+                                    ? [...regulatory.selectedAgencies, agency.id]
+                                    : regulatory.selectedAgencies.filter(id => id !== agency.id)
+                                  setRegulatory({
+                                    ...regulatory,
+                                    selectedAgencies: newAgencies,
+                                  })
+                                  setRegulatoryValue('selectedAgencies', newAgencies)
+                                }}
+                                className="mt-1 rounded border-gray-300"
+                              />
+                              <div className="flex-1">
+                                <div className="font-medium text-gray-900">{agency.name}</div>
+                                <p className="text-sm text-gray-600">{agency.description}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label>Additional Agencies</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={newAgencyName}
+                    onChange={(e) => setNewAgencyName(e.target.value)}
+                    placeholder="Enter agency name..."
+                  />
+                  <Button
+                    type="button"
+                    onClick={addCustomAgency}
+                    disabled={!newAgencyName.trim()}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                {regulatory.customAgencies && regulatory.customAgencies.length > 0 && (
+                  <div className="grid grid-cols-2 gap-4 mt-2">
+                    {regulatory.customAgencies.map(agency => (
+                      <label key={agency.id} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          value={agency.id}
+                          checked={regulatory.selectedAgencies.includes(agency.id)}
+                          onChange={(e) => {
+                            const newAgencies = e.target.checked
+                              ? [...regulatory.selectedAgencies, agency.id]
+                              : regulatory.selectedAgencies.filter(id => id !== agency.id)
+                            setRegulatory({
+                              ...regulatory,
+                              selectedAgencies: newAgencies,
+                            })
+                            setRegulatoryValue('selectedAgencies', newAgencies)
+                          }}
+                          className="rounded border-gray-300"
+                        />
+                        <span>{agency.name}</span>
+                      </label>
+                    ))}
                   </div>
                 )}
-
-                <div className="space-y-2">
-                  <Label>Additional Agencies</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={newAgencyName}
-                      onChange={(e) => setNewAgencyName(e.target.value)}
-                      placeholder="Enter agency name..."
-                    />
-                    <Button
-                      type="button"
-                      onClick={addCustomAgency}
-                      disabled={!newAgencyName.trim()}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  {regulatory.customAgencies && regulatory.customAgencies.length > 0 && (
-                    <div className="grid grid-cols-2 gap-4 mt-2">
-                      {regulatory.customAgencies.map(agency => (
-                        <label key={agency.id} className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            value={agency.id}
-                            checked={regulatory.selectedAgencies.includes(agency.id)}
-                            onChange={(e) => {
-                              const newAgencies = e.target.checked
-                                ? [...regulatory.selectedAgencies, agency.id]
-                                : regulatory.selectedAgencies.filter(id => id !== agency.id)
-                              setRegulatory({
-                                ...regulatory,
-                                selectedAgencies: newAgencies,
-                              })
-                              setRegulatoryValue('selectedAgencies', newAgencies)
-                            }}
-                            className="rounded border-gray-300"
-                          />
-                          <span>{agency.name}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </div>
-
-              {regulatoryErrors.selectedAgencies && (
-                <p className="text-sm text-red-500">{regulatoryErrors.selectedAgencies.message}</p>
-              )}
             </div>
+
+            {regulatoryErrors.selectedAgencies && (
+              <p className="text-sm text-red-500">{regulatoryErrors.selectedAgencies.message}</p>
+            )}
+
+            {error && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-md">
+                <p className="text-sm text-red-600">{error}</p>
+              </div>
+            )}
 
             <div className="flex justify-between">
               <Button type="button" onClick={handleBack} variant="outline">
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back
               </Button>
-              <Button type="submit" disabled={loading}>
-                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Select Regulatory Bodies
+              <Button 
+                type="submit" 
+                disabled={loading || regulatory.selectedAgencies.length === 0}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating Brand...
+                  </>
+                ) : (
+                  <>
+                    Create Brand
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </>
+                )}
               </Button>
             </div>
           </form>

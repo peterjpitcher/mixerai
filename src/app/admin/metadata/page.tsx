@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import SingleMetadataForm from '@/components/metadata/SingleMetadataForm'
 import BulkMetadataForm from '@/components/metadata/BulkMetadataForm'
 
-export default function MetadataGenerationPage() {
+export default function MetadataPage() {
   const [activeTab, setActiveTab] = useState('single')
 
   return (

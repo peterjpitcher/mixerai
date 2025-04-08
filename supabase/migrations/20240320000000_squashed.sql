@@ -3,6 +3,10 @@ CREATE TABLE IF NOT EXISTS brands (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     name TEXT NOT NULL,
     logo_url TEXT DEFAULT 'https://placehold.co/200x200?text=Brand+Logo',
+    website_url TEXT,
+    language TEXT,
+    country TEXT,
+    data JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -151,7 +155,7 @@ CREATE INDEX IF NOT EXISTS idx_user_brand_access_brand_id ON user_brand_access(b
 CREATE INDEX IF NOT EXISTS idx_user_brand_access_user_id ON user_brand_access(user_id);
 
 -- Create views
-CREATE VIEW user_roles AS
+CREATE OR REPLACE VIEW user_roles AS
 SELECT 
     ur.user_id,
     ur.role_name,
@@ -170,51 +174,6 @@ INSERT INTO roles (name, permissions) VALUES
     ('Brand Member', ARRAY['view_content']),
     ('Publisher', ARRAY['publish_content']),
     ('Project Manager', ARRAY['manage_content', 'assign_tasks']);
-
--- Create admin user and grant access
-INSERT INTO auth.users (
-    id,
-    instance_id,
-    email,
-    encrypted_password,
-    email_confirmed_at,
-    recovery_sent_at,
-    last_sign_in_at,
-    raw_app_meta_data,
-    raw_user_meta_data,
-    created_at,
-    updated_at,
-    confirmation_token,
-    email_change,
-    email_change_token_new,
-    recovery_token
-) VALUES (
-    '00000000-0000-0000-0000-000000000001',
-    '00000000-0000-0000-0000-000000000000',
-    'peter.pitcher@genmills.com',
-    crypt('Pitcher1458955', gen_salt('bf')),
-    now(),
-    now(),
-    now(),
-    '{"provider":"email","providers":["email"]}',
-    '{"full_name":"Peter Pitcher"}',
-    now(),
-    now(),
-    '',
-    '',
-    '',
-    ''
-) ON CONFLICT (id) DO UPDATE
-SET encrypted_password = crypt('Pitcher1458955', gen_salt('bf'));
-
--- Create admin profile
-INSERT INTO profiles (id, full_name, role)
-VALUES (
-    '00000000-0000-0000-0000-000000000001',
-    'Peter Pitcher',
-    'admin'
-) ON CONFLICT (id) DO UPDATE
-SET role = 'admin';
 
 -- Function to check Resend API key
 CREATE OR REPLACE FUNCTION check_resend_api_key()
@@ -237,21 +196,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Set up Resend API key
-DO $$
-BEGIN
-    -- Set the Resend API key for development
-    PERFORM set_config('app.resend_api_key', 're_enrrAdjA_9pC2TsvxXzrvTU9HB4VnhoF7', true);
-    
-    -- Verify the key was set
-    IF current_setting('app.resend_api_key', true) IS NULL THEN
-        RAISE EXCEPTION 'Failed to set Resend API key';
-    END IF;
-    
-    -- Log the key status
-    RAISE NOTICE 'Resend API key status: %', check_resend_api_key();
-END $$;
-
 -- Create function to handle brand role creation
 CREATE OR REPLACE FUNCTION handle_brand_role_creation()
 RETURNS TRIGGER AS $$
@@ -266,7 +210,7 @@ BEGIN
         WHERE id = NEW.brand_id;
         
         -- Log invitation details
-        RAISE NOTICE E'\n\nNew role invitation:\nTo: %\nBrand: %\nRole: %\nMessage: Please contact peter.pitcher@genmills.com to accept this invitation\n', 
+        RAISE NOTICE E'\n\nNew role invitation:\nTo: %\nBrand: %\nRole: %\n', 
             NEW.email, v_brand_name, NEW.role_name;
     END IF;
     
