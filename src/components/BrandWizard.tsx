@@ -381,8 +381,12 @@ export default function BrandWizard({ onComplete }: BrandWizardProps) {
         throw new Error('You must be logged in to create a brand')
       }
 
+      if (!basicInfo) {
+        throw new Error('Basic brand information is required')
+      }
+
       let logoUrl = null
-      if (basicInfo?.logo) {
+      if (basicInfo.logo) {
         try {
           console.log('Uploading logo...');
           // Create the bucket if it doesn't exist
