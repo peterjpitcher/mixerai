@@ -11,11 +11,12 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Loader2, ArrowLeft, ArrowRight, Plus, Trash, Upload, Trash2, Sparkles } from 'lucide-react'
+import { Loader2, ArrowLeft, ArrowRight, Plus, Trash, Upload, Trash2, Sparkles, HelpCircle } from 'lucide-react'
 import { countries, type Country } from '@/lib/countries'
 import { languages, type Language } from '@/lib/languages'
 import Image from 'next/image'
 import { isValidUrl } from '@/lib/scraper'
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
 
 interface TeamRole {
   id: string
@@ -53,10 +54,10 @@ const teamRoles: TeamRole[] = [
 ]
 
 const basicInfoSchema = z.object({
-  name: z.string().min(2, 'Brand name must be at least 2 characters'),
-  websiteUrl: z.string().url('Please enter a valid URL'),
-  language: z.string().min(1, 'Please select a language'),
-  country: z.string().min(1, 'Please select a country'),
+  name: z.string().min(2, 'Your brand name should be at least 2 characters'),
+  websiteUrl: z.string().url('Please enter a valid website URL'),
+  language: z.string().min(1, 'Please select your preferred language'),
+  country: z.string().min(1, 'Please select your brand\'s primary country'),
   logo: z.any().optional(),
 })
 
@@ -389,21 +390,7 @@ export default function BrandWizard({ onComplete }: BrandWizardProps) {
       if (basicInfo.logo) {
         try {
           console.log('Uploading logo...');
-          // Create the bucket if it doesn't exist
-          const { data: bucketData, error: bucketError } = await supabase.storage
-            .createBucket('brand-logos', {
-              public: true,
-              allowedMimeTypes: ['image/png', 'image/svg+xml'],
-              fileSizeLimit: 2097152 // 2MB
-            })
-
-          if (bucketError) {
-            console.error('Bucket creation error:', bucketError);
-            if (!bucketError.message.includes('already exists')) {
-              throw bucketError
-            }
-          }
-
+          
           // Upload the logo with public access
           const fileName = `${Date.now()}-${basicInfo.logo.name}`
           const { data: uploadData, error: uploadError } = await supabase.storage
@@ -427,7 +414,19 @@ export default function BrandWizard({ onComplete }: BrandWizardProps) {
           console.log('Logo uploaded successfully:', logoUrl);
         } catch (uploadError) {
           console.error('Logo upload error:', uploadError)
-          setError('Failed to upload logo, but continuing with brand creation')
+          // Make the error more user-friendly
+          if (uploadError instanceof Error) {
+            if (uploadError.message.includes('Permission denied')) {
+              setError('Permission denied while uploading logo. Please try logging in again.')
+            } else if (uploadError.message.includes('Bucket not found')) {
+              setError('Storage not properly configured. Please contact support.')
+            } else {
+              setError(`Failed to upload logo: ${uploadError.message}`)
+            }
+          } else {
+            setError('Failed to upload logo due to an unknown error')
+          }
+          return // Stop the brand creation if logo upload fails
         }
       }
 
@@ -493,137 +492,161 @@ export default function BrandWizard({ onComplete }: BrandWizardProps) {
       case 1:
         return (
           <form onSubmit={handleBasicInfoSubmit(onBasicInfoSubmit)} className="space-y-4">
-            <div>
-              <Label htmlFor="name">Brand Name</Label>
-              <Input
-                id="name"
-                {...registerBasicInfo('name')}
-                className={basicInfoErrors.name ? 'border-red-500' : ''}
-              />
-              {basicInfoErrors.name && (
-                <p className="text-sm text-red-500 mt-1">{basicInfoErrors.name.message}</p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="websiteUrl">Website URL</Label>
-              <Input
-                id="websiteUrl"
-                type="url"
-                {...registerBasicInfo('websiteUrl')}
-                className={basicInfoErrors.websiteUrl ? 'border-red-500' : ''}
-              />
-              {basicInfoErrors.websiteUrl && (
-                <p className="text-sm text-red-500 mt-1">{basicInfoErrors.websiteUrl.message}</p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="language">Language</Label>
-              <Select
-                value={basicInfo?.language || ""}
-                onValueChange={(value) => {
-                  setBasicInfo(prev => ({ ...prev!, language: value }))
-                  setBasicInfoValue('language', value)
-                }}
-              >
-                <SelectTrigger className={basicInfoErrors.language ? 'border-red-500' : ''}>
-                  <SelectValue placeholder="Select a language" />
-                </SelectTrigger>
-                <SelectContent>
-                  {languages.map((lang: Language) => (
-                    <SelectItem key={lang.code} value={lang.code}>
-                      {lang.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {basicInfoErrors.language && (
-                <p className="text-sm text-red-500 mt-1">{basicInfoErrors.language.message}</p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="country">Country</Label>
-              <Select
-                value={basicInfo?.country || ""}
-                onValueChange={(value) => {
-                  setBasicInfo(prev => ({ ...prev!, country: value }))
-                  setBasicInfoValue('country', value)
-                }}
-              >
-                <SelectTrigger className={basicInfoErrors.country ? 'border-red-500' : ''}>
-                  <SelectValue placeholder="Select a country" />
-                </SelectTrigger>
-                <SelectContent>
-                  {countries.map((country: Country) => (
-                    <SelectItem key={country.code} value={country.code}>
-                      {country.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {basicInfoErrors.country && (
-                <p className="text-sm text-red-500 mt-1">{basicInfoErrors.country.message}</p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="logo">Brand Logo</Label>
-              <p className="text-sm text-gray-500 mb-2">
-                Recommended: PNG or SVG format, minimum 400x400px, maximum 2MB.
-                For best results, use a square image with transparent background.
-              </p>
-              <div className="mt-1 flex items-center space-x-4">
-                <label className="flex items-center justify-center w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400">
-                  <input
-                    type="file"
-                    id="logo"
-                    accept="image/png,image/svg+xml"
-                    className="sr-only"
-                    onChange={handleLogoChange}
-                  />
-                  {logoPreview ? (
-                    <Image
-                      src={logoPreview}
-                      alt="Logo preview"
-                      width={128}
-                      height={128}
-                      className="w-24 h-24 object-contain"
-                    />
-                  ) : (
-                    <div className="text-center">
-                      <Upload className="mx-auto h-8 w-8 text-gray-400" />
-                      <span className="mt-2 block text-sm text-gray-500">Upload logo</span>
-                    </div>
-                  )}
-                </label>
-                {logoPreview && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setLogoPreview(null)
-                      setBasicInfoValue('logo', undefined)
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+            <TooltipProvider>
+              <div>
+                <Label htmlFor="name" className="flex items-center gap-2">
+                  Brand Name
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <HelpCircle className="h-4 w-4 text-gray-400" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Choose a name that reflects your brand's identity and is easy to remember</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </Label>
+                <Input
+                  id="name"
+                  {...registerBasicInfo('name')}
+                  className={basicInfoErrors.name ? 'border-red-500' : ''}
+                  placeholder="e.g. Acme Corporation"
+                />
+                {basicInfoErrors.name && (
+                  <p className="text-sm text-red-500 mt-1">{basicInfoErrors.name.message}</p>
                 )}
               </div>
-              {basicInfoErrors.logo && (
-                <p className="text-sm text-red-500 mt-1">{basicInfoErrors.logo?.message?.toString()}</p>
-              )}
-            </div>
 
-            <div className="flex justify-end space-x-2">
-              <Button type="submit" disabled={loading}>
-                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Next
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </div>
+              <div>
+                <Label htmlFor="websiteUrl" className="flex items-center gap-2">
+                  Website URL
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <HelpCircle className="h-4 w-4 text-gray-400" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Enter your brand's primary website address</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </Label>
+                <Input
+                  id="websiteUrl"
+                  type="url"
+                  placeholder="https://www.example.com"
+                  {...registerBasicInfo('websiteUrl')}
+                  className={basicInfoErrors.websiteUrl ? 'border-red-500' : ''}
+                />
+                {basicInfoErrors.websiteUrl && (
+                  <p className="text-sm text-red-500 mt-1">{basicInfoErrors.websiteUrl.message}</p>
+                )}
+              </div>
+
+              <div>
+                <Label htmlFor="language">Language</Label>
+                <Select
+                  value={basicInfo?.language || ""}
+                  onValueChange={(value) => {
+                    setBasicInfo(prev => ({ ...prev!, language: value }))
+                    setBasicInfoValue('language', value)
+                  }}
+                >
+                  <SelectTrigger className={basicInfoErrors.language ? 'border-red-500' : ''}>
+                    <SelectValue placeholder="Select a language" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {languages.map((lang: Language) => (
+                      <SelectItem key={lang.code} value={lang.code}>
+                        {lang.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {basicInfoErrors.language && (
+                  <p className="text-sm text-red-500 mt-1">{basicInfoErrors.language.message}</p>
+                )}
+              </div>
+
+              <div>
+                <Label htmlFor="country">Country</Label>
+                <Select
+                  value={basicInfo?.country || ""}
+                  onValueChange={(value) => {
+                    setBasicInfo(prev => ({ ...prev!, country: value }))
+                    setBasicInfoValue('country', value)
+                  }}
+                >
+                  <SelectTrigger className={basicInfoErrors.country ? 'border-red-500' : ''}>
+                    <SelectValue placeholder="Select a country" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {countries.map((country: Country) => (
+                      <SelectItem key={country.code} value={country.code}>
+                        {country.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {basicInfoErrors.country && (
+                  <p className="text-sm text-red-500 mt-1">{basicInfoErrors.country.message}</p>
+                )}
+              </div>
+
+              <div>
+                <Label htmlFor="logo">Brand Logo</Label>
+                <p className="text-sm text-gray-500 mb-2">
+                  Recommended: PNG or SVG format, minimum 400x400px, maximum 2MB.
+                  For best results, use a square image with transparent background.
+                </p>
+                <div className="mt-1 flex items-center space-x-4">
+                  <label className="flex items-center justify-center w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400">
+                    <input
+                      type="file"
+                      id="logo"
+                      accept="image/png,image/svg+xml"
+                      className="sr-only"
+                      onChange={handleLogoChange}
+                    />
+                    {logoPreview ? (
+                      <Image
+                        src={logoPreview}
+                        alt="Logo preview"
+                        width={128}
+                        height={128}
+                        className="w-24 h-24 object-contain"
+                      />
+                    ) : (
+                      <div className="text-center">
+                        <Upload className="mx-auto h-8 w-8 text-gray-400" />
+                        <span className="mt-2 block text-sm text-gray-500">Upload logo</span>
+                      </div>
+                    )}
+                  </label>
+                  {logoPreview && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setLogoPreview(null)
+                        setBasicInfoValue('logo', undefined)
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+                {basicInfoErrors.logo && (
+                  <p className="text-sm text-red-500 mt-1">{basicInfoErrors.logo?.message?.toString()}</p>
+                )}
+              </div>
+
+              <div className="flex justify-end space-x-2">
+                <Button type="submit" disabled={loading}>
+                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Next
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </div>
+            </TooltipProvider>
           </form>
         )
 
@@ -1003,8 +1026,8 @@ export default function BrandWizard({ onComplete }: BrandWizardProps) {
   return (
     <div className="space-y-6 max-h-[80vh] overflow-y-auto bg-white">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Create Brand</h1>
-        <p className="text-gray-500">Set up your brand in just a few steps</p>
+        <h1 className="text-3xl font-bold text-gray-900">Create Your Brand</h1>
+        <p className="text-gray-500">Let's set up your brand together in just a few simple steps</p>
       </div>
 
       <div className="relative">
@@ -1015,9 +1038,9 @@ export default function BrandWizard({ onComplete }: BrandWizardProps) {
           />
         </div>
         <div className="flex justify-between text-sm">
-          <span className={currentStep >= 1 ? 'text-blue-500' : 'text-gray-500'}>Basic Info</span>
+          <span className={currentStep >= 1 ? 'text-blue-500' : 'text-gray-500'}>Brand Details</span>
           <span className={currentStep >= 2 ? 'text-blue-500' : 'text-gray-500'}>Brand Identity</span>
-          <span className={currentStep >= 3 ? 'text-blue-500' : 'text-gray-500'}>Regulatory</span>
+          <span className={currentStep >= 3 ? 'text-blue-500' : 'text-gray-500'}>Compliance</span>
         </div>
       </div>
 
@@ -1025,9 +1048,9 @@ export default function BrandWizard({ onComplete }: BrandWizardProps) {
         <CardHeader className="bg-white">
           <CardTitle className="text-gray-900">
             Step {currentStep} of 3:
-            {currentStep === 1 ? ' Brand Details' : 
-             currentStep === 2 ? ' Brand Identity' : 
-             ' Regulatory Compliance'}
+            {currentStep === 1 ? ' Tell us about your brand' : 
+             currentStep === 2 ? ' Define your brand\'s personality' : 
+             ' Ensure compliance'}
           </CardTitle>
         </CardHeader>
         <CardContent className="bg-white">
