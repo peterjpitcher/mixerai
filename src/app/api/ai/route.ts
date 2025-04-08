@@ -7,13 +7,13 @@ if (!process.env.OPENAI_API_KEY) {
   throw new Error('Missing environment variable: OPENAI_API_KEY')
 }
 
-if (!process.env.OPENAI_BASE_URL) {
-  throw new Error('Missing environment variable: OPENAI_BASE_URL')
+if (!process.env.AZURE_OPENAI_ENDPOINT) {
+  throw new Error('Missing environment variable: AZURE_OPENAI_ENDPOINT')
 }
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  baseURL: process.env.OPENAI_BASE_URL,
+  baseURL: process.env.AZURE_OPENAI_ENDPOINT,
   defaultQuery: { 'api-version': '2024-02-15-preview' },
   defaultHeaders: { 'api-key': process.env.OPENAI_API_KEY },
 })

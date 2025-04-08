@@ -7,13 +7,13 @@ if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_a
   throw new Error('OPENAI_API_KEY is not properly configured')
 }
 
-if (!process.env.OPENAI_BASE_URL) {
-  throw new Error('OPENAI_BASE_URL is not configured')
+if (!process.env.AZURE_OPENAI_ENDPOINT) {
+  throw new Error('AZURE_OPENAI_ENDPOINT is not configured')
 }
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  baseURL: process.env.OPENAI_BASE_URL,
+  baseURL: process.env.AZURE_OPENAI_ENDPOINT,
   defaultQuery: { 'api-version': '2024-02-15-preview' },
   defaultHeaders: { 'api-key': process.env.OPENAI_API_KEY }
 })
