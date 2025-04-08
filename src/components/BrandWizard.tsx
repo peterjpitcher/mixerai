@@ -91,7 +91,7 @@ interface BrandWizardProps {
 }
 
 export default function BrandWizard({ onComplete }: BrandWizardProps) {
-  const { supabase } = useSupabase()
+  const { supabase, user } = useSupabase()
   const [currentStep, setCurrentStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -374,29 +374,11 @@ export default function BrandWizard({ onComplete }: BrandWizardProps) {
 
   const onRegulatorySubmit = async (data: RegulatoryData) => {
     try {
-      console.log('Starting brand creation with data:', {
-        basicInfo,
-        brandIdentity,
-        regulatory: data
-      });
-      
       setLoading(true)
       setError(null)
 
-      // Get the current user
-      const { data: { user }, error: userError } = await supabase.auth.getUser()
-      
-      if (userError) {
-        throw new Error('Failed to get current user')
-      }
-
       if (!user) {
-        throw new Error('No authenticated user found')
-      }
-
-      // Validate required fields
-      if (!basicInfo?.name || !basicInfo?.websiteUrl || !basicInfo?.language || !basicInfo?.country) {
-        throw new Error('Missing required basic information')
+        throw new Error('You must be logged in to create a brand')
       }
 
       let logoUrl = null
