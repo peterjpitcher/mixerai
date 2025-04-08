@@ -10,35 +10,44 @@ const COMING_SOON_PATHS = [
 ]
 
 export async function middleware(request: NextRequest) {
-  const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req: request, res })
+  try {
+    const res = NextResponse.next()
+    const supabase = createMiddlewareClient({ req: request, res })
 
-  // Refresh session if expired
-  const { data: { session } } = await supabase.auth.getSession()
+    // Refresh session if expired
+    const { data: { session } } = await supabase.auth.getSession()
 
-  // Check if we're on an auth page
-  const isAuthPage = request.nextUrl.pathname.startsWith('/auth')
+    // Check if we're on an auth page
+    const isAuthPage = request.nextUrl.pathname.startsWith('/auth')
 
-  if (!session && !isAuthPage) {
-    // Redirect to sign in if accessing protected route without session
-    const redirectUrl = request.nextUrl.clone()
-    redirectUrl.pathname = '/auth/sign-in'
-    redirectUrl.searchParams.set('redirectedFrom', request.nextUrl.pathname)
-    return NextResponse.redirect(redirectUrl)
+    if (!session && !isAuthPage) {
+      // Redirect to sign in if accessing protected route without session
+      const redirectUrl = request.nextUrl.clone()
+      redirectUrl.pathname = '/auth/sign-in'
+      redirectUrl.searchParams.set('redirectedFrom', request.nextUrl.pathname)
+      return NextResponse.redirect(redirectUrl)
+    }
+
+    if (session && isAuthPage) {
+      // Redirect to home if accessing auth page with session
+      return NextResponse.redirect(new URL('/admin/brands', request.url))
+    }
+
+    // Check if the requested path is in the coming soon list
+    if (COMING_SOON_PATHS.some(path => request.nextUrl.pathname.startsWith(path))) {
+      // Redirect to the content creation page
+      return NextResponse.redirect(new URL('/content/create', request.url))
+    }
+
+    return res
+  } catch (error) {
+    console.error('Middleware error:', error)
+    // If there's an error with Supabase client initialization, redirect to error page
+    if (error instanceof Error && error.message.includes('supabaseUrl')) {
+      return NextResponse.redirect(new URL('/error', request.url))
+    }
+    return NextResponse.next()
   }
-
-  if (session && isAuthPage) {
-    // Redirect to home if accessing auth page with session
-    return NextResponse.redirect(new URL('/admin/brands', request.url))
-  }
-
-  // Check if the requested path is in the coming soon list
-  if (COMING_SOON_PATHS.some(path => request.nextUrl.pathname.startsWith(path))) {
-    // Redirect to the content creation page
-    return NextResponse.redirect(new URL('/content/create', request.url))
-  }
-
-  return res
 }
 
 export const config = {
