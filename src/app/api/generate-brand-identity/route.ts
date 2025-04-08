@@ -8,47 +8,35 @@ interface BrandIdentityResponse {
   guardrails: string[];
 }
 
-if (!process.env.OPENAI_API_KEY) {
-  throw new Error('Missing OPENAI_API_KEY environment variable')
-}
-
-if (!process.env.AZURE_OPENAI_ENDPOINT) {
-  throw new Error('Missing AZURE_OPENAI_ENDPOINT environment variable')
-}
-
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  baseURL: process.env.AZURE_OPENAI_ENDPOINT,
-  defaultQuery: { 'api-version': '2024-02-15-preview' },
-  defaultHeaders: { 'api-key': process.env.OPENAI_API_KEY }
 })
 
 export async function POST(request: Request) {
   try {
-    const { urls, language, country } = await request.json()
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json(
+        { message: 'OpenAI API key is not configured' },
+        { status: 500 }
+      )
+    }
+
+    const { urls, language = 'en', country = 'US' } = await request.json()
 
     if (!urls || !Array.isArray(urls) || urls.length === 0) {
       return NextResponse.json(
-        { message: 'At least one valid URL is required' },
+        { message: 'At least one URL is required' },
         { status: 400 }
       )
     }
 
-    if (!language || !country) {
-      return NextResponse.json(
-        { message: 'Language and country are required' },
-        { status: 400 }
-      )
-    }
-
-    // Extract content from all URLs
-    const websiteContent = await extractContentFromUrls(urls)
-
-    if (!websiteContent) {
-      return NextResponse.json(
-        { message: 'Failed to extract content from provided URLs' },
-        { status: 400 }
-      )
+    // Extract content from URLs
+    let websiteContent = ''
+    try {
+      websiteContent = await extractContentFromUrls(urls)
+    } catch (error) {
+      console.error('Error extracting content from URLs:', error)
+      websiteContent = 'Failed to extract content from URLs'
     }
 
     // Generate brand identity

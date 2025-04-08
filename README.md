@@ -49,6 +49,15 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 OPENAI_API_KEY=your_openai_api_key
 ```
 
+### OpenAI Configuration
+
+The application uses the OpenAI `gpt-4o` model for all AI-powered features, including:
+- Brand identity generation
+- Content metadata generation
+- Content analysis and optimization
+
+Please ensure your OpenAI API key has access to this specific model.
+
 ## Installation
 
 1. Clone the repository:

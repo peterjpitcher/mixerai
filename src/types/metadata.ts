@@ -4,7 +4,6 @@ export interface MetadataResult {
   metaDescription: string
   ogTitle: string
   ogDescription: string
-  language: string
   status: 'success' | 'error'
   error: string | null
 }

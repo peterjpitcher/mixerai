@@ -1,26 +1,35 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { MetadataResult } from '@/types/metadata'
 import { Download } from 'lucide-react'
+import { Progress } from '@/components/ui/progress'
 
 interface BulkMetadataResultsProps {
   results: MetadataResult[]
+  isProcessing?: boolean
+  progress?: number
+  currentMessage?: string
 }
 
-export default function BulkMetadataResults({ results }: BulkMetadataResultsProps) {
+export default function BulkMetadataResults({ 
+  results, 
+  isProcessing = false, 
+  progress = 0, 
+  currentMessage = '' 
+}: BulkMetadataResultsProps) {
   const handleDownloadCSV = () => {
     // Create CSV content
-    const headers = ['URL', 'Page Title', 'Meta Description', 'OG Title', 'OG Description', 'Language', 'Status']
+    const headers = ['URL', 'Page Title', 'Meta Description', 'OG Title', 'OG Description', 'Status']
     const rows = results.map(result => [
       result.url,
       result.pageTitle,
       result.metaDescription,
       result.ogTitle,
       result.ogDescription,
-      result.language,
       result.status
     ])
 
@@ -44,12 +53,23 @@ export default function BulkMetadataResults({ results }: BulkMetadataResultsProp
     <Card>
       <CardContent className="pt-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold">Results ({results.length} URLs)</h2>
-          <Button onClick={handleDownloadCSV} variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Download CSV
-          </Button>
+          <h2 className="text-lg font-semibold">
+            {isProcessing ? 'Processing URLs...' : `Results (${results.length} URLs)`}
+          </h2>
+          {results.length > 0 && (
+            <Button onClick={handleDownloadCSV} variant="outline" size="sm">
+              <Download className="h-4 w-4 mr-2" />
+              Download CSV
+            </Button>
+          )}
         </div>
+
+        {isProcessing && (
+          <div className="mb-6 space-y-2">
+            <Progress value={progress} className="w-full" />
+            <p className="text-sm text-muted-foreground">{currentMessage}</p>
+          </div>
+        )}
 
         <div className="rounded-md border">
           <Table>

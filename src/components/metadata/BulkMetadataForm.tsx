@@ -4,34 +4,31 @@ import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
-import { Loader2 } from 'lucide-react'
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
-import { Textarea } from '@/components/ui/textarea'
+import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Alert } from '@/components/ui/alert'
-import { useSupabase } from '@/components/providers/SupabaseProvider'
-import { MetadataResult } from '@/types/metadata'
+import { Loader2 } from 'lucide-react'
 import BulkMetadataResults from './BulkMetadataResults'
+import { MetadataResult } from '@/types/metadata'
 
 const formSchema = z.object({
-  urls: z.string().min(1, 'Please enter at least one URL'),
-  brandId: z.string().min(1, 'Please select a brand')
+  urls: z.string().min(1, 'URLs are required'),
+  brandId: z.string().min(1, 'Brand is required')
 })
 
 type FormData = z.infer<typeof formSchema>
 
-interface Brand {
-  id: string
-  name: string
-}
-
 export default function BulkMetadataForm() {
   const { supabase } = useSupabase()
-  const [brands, setBrands] = useState<Brand[]>([])
+  const [brands, setBrands] = useState<{ id: string; name: string }[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [results, setResults] = useState<MetadataResult[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [progress, setProgress] = useState(0)
+  const [currentMessage, setCurrentMessage] = useState('')
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -63,18 +60,16 @@ export default function BulkMetadataForm() {
     setIsLoading(true)
     setError(null)
     setResults([])
+    setProgress(0)
+    setCurrentMessage('')
 
     try {
-      // Split URLs by newline and filter out empty lines
       const urls = data.urls
         .split('\n')
         .map(url => url.trim())
         .filter(url => url.length > 0)
 
-      if (urls.length === 0) {
-        throw new Error('Please enter at least one valid URL')
-      }
-
+      // Create EventSource for progress updates
       const response = await fetch('/api/generate-metadata', {
         method: 'POST',
         headers: {
@@ -88,14 +83,48 @@ export default function BulkMetadataForm() {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to generate metadata')
+        throw new Error('Failed to start metadata generation')
       }
 
-      const responseData = await response.json()
-      setResults(responseData.results)
+      const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error('Failed to create stream reader')
+      }
+
+      const decoder = new TextDecoder()
+      const processStream = async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            const chunk = decoder.decode(value)
+            const lines = chunk.split('\n')
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const eventData = JSON.parse(line.slice(6))
+                setProgress(eventData.progress)
+                setCurrentMessage(eventData.message)
+                if (eventData.result) {
+                  setResults(prev => [...prev, eventData.result])
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error processing stream:', error)
+          setError('Error processing URLs')
+        } finally {
+          reader.releaseLock()
+          setIsLoading(false)
+        }
+      }
+
+      processStream()
     } catch (err) {
+      console.error('Error generating metadata:', err)
       setError(err instanceof Error ? err.message : 'An error occurred')
-    } finally {
       setIsLoading(false)
     }
   }
@@ -110,14 +139,18 @@ export default function BulkMetadataForm() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Brand</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <Select
+                  onValueChange={field.onChange}
+                  defaultValue={field.value}
+                  disabled={isLoading}
+                >
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="Select a brand" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {brands.map((brand) => (
+                    {brands.map(brand => (
                       <SelectItem key={brand.id} value={brand.id}>
                         {brand.name}
                       </SelectItem>
@@ -137,16 +170,22 @@ export default function BulkMetadataForm() {
                 <FormLabel>URLs (one per line)</FormLabel>
                 <FormControl>
                   <Textarea
-                    placeholder="https://example.com/page1&#10;https://example.com/page2&#10;https://example.com/page3"
-                    className="min-h-[200px] font-mono"
-                    onChange={(e) => field.onChange(e.target.value)}
-                    value={field.value}
+                    placeholder="https://example.com/page1&#10;https://example.com/page2"
+                    {...field}
+                    rows={10}
+                    disabled={isLoading}
                   />
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
+
+          {error && (
+            <Alert variant="destructive">
+              <p className="text-sm">{error}</p>
+            </Alert>
+          )}
 
           <Button type="submit" disabled={isLoading}>
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -155,13 +194,14 @@ export default function BulkMetadataForm() {
         </form>
       </Form>
 
-      {error && (
-        <Alert variant="destructive">
-          <p className="text-sm">{error}</p>
-        </Alert>
+      {(results.length > 0 || isLoading) && (
+        <BulkMetadataResults 
+          results={results}
+          isProcessing={isLoading}
+          progress={progress}
+          currentMessage={currentMessage}
+        />
       )}
-
-      {results.length > 0 && <BulkMetadataResults results={results} />}
     </div>
   )
 } 
